@@ -19,6 +19,6 @@
 | 2 | 1-B |Claude Code Opus 5.5| `prompts/1-…` run B |`prompts/1-recover-architecture.md` `system/online-boutique/protos/demo.proto` `system/online-boutique/kubernetes-manifests/` |อยู่ในขอบเขต | | |
 | 3 | 2-a |Claude Code Opus 5.5| `prompts/2-…` run a |`CLAUDE.md` `AGENTS.md` `prompts/2-write-adr.md` `docs/adr/template.md` |อยู่ในขอบเขต | | |
 | 4 | 2-b |Claude Code Opus 5.5| `prompts/2-…` run b |`CLAUDE.md` `AGENTS.md` `prompts/2-write-adr.md` `docs/adr/template.md` `docs/scenario.md` `docs/adr/0001-use-redis-for-cart-storage.md` `system/online-boutique/src/checkoutservice/main.go` |อยู่ในขอบเขต | | |
-| 5 | 3 | | `prompts/3-…` | | | | |
+| 5 | 3 |Claude Code Opus 5.5 | `prompts/3-…` |`prompts/3-review-adr.md` `adr: docs/adr/0002-adr.md` |อยู่ในขอบเขต  | | |
 | 6 | | | | | | | |
 | 7 | | | | | | | |

@@ -38,15 +38,17 @@ evidence: system/online-boutique/protos/demo.proto, system/online-boutique/kuber
 
 | ผู้เรียก → ผู้ถูกเรียก | หลักฐานที่ AI อ้าง | ยืนยันแล้วหรือไม่ ✅ / ❌ / ❓ | สิ่งที่นิสิตพบ |
 |---|---|---|---|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
-| | | | |
+|`frontend` → `productcatalogservice` |`kubernetes-manifests/frontend.yaml` (`PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550`) | ✅| |
+|`frontend` → `cartservice`  |`kubernetes-manifests/frontend.yaml` (`CART_SERVICE_ADDR=cartservice:7070`) | ✅| |
+|`checkoutservice` → `currencyservice` |`kubernetes-manifests/checkoutservice.yaml` (`CURRENCY_SERVICE_ADDR=currencyservice:7000`) | ✅| |
+|`recommendationservice` → `productcatalogservice` |`kubernetes-manifests/recommendationservice.yaml` (`PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550`) | ✅| |
+|`cartservice` → `redis-cart`  |`kubernetes-manifests/cartservice.yaml` (`REDIS_ADDR=redis-cart:6379`; Service port name `tcp-redis`) | ✅| |
 
 - **สิ่งที่ผิดหรือขาดหายไป** ใน Run B (dependency ที่ไม่มีจริง, dependency ที่ขาดไป, container ที่น่าสงสัย): …
 
 ## สะท้อนคิด (ข้อละ 2–3 ประโยค)
 
 1. เปรียบเทียบ A กับ B: agent **ไม่สามารถ**รู้อะไรได้จากไฟล์ `.proto` เพียงไฟล์เดียว และเพราะเหตุใด
-2. ข้อผิดพลาด**ข้อใดข้อหนึ่ง**ที่จะทำให้สมาชิกใหม่ของทีมเข้าใจผิดมากที่สุด หากเผยแพร่แผนภาพนี้โดยไม่ตรวจสอบ
+: ไม่สามารถทำ service discovery 
+2ที่ถูกประกาศปลายทางและ port รับอยู่ภายในไฟล์ manifest. ข้อผิดพลาด**ข้อใดข้อหนึ่ง**ที่จะทำให้สมาชิกใหม่ของทีมเข้าใจผิดมากที่สุด หากเผยแพร่แผนภาพนี้โดยไม่ตรวจสอบ
+: หากไม่ตรวจสอบให้ดีอาจไม่ทราบว่ามี dependency จาก checkoutservice ไปที่ cartservice เนื่องจากซ้อนทับกันกับเส้นที่ frontend เรียกมา

@@ -35,10 +35,10 @@ language: Thai
 
 | เกณฑ์ | Run a | Run b |
 |---|---|---|
-| ใช้ตัวเลขจาก scenario หรือไม่ (latency, ช่วงพีก, ข้อจำกัดของ MailFast) | | |
-| ทางเลือกที่พิจารณา (ระบุ) | | |
-| จัดการแต้มสะสมแบบ "ครั้งเดียวเท่านั้น" และ rate limit ของ MailFast หรือไม่ อย่างไร | | |
-| มีสิ่งที่แต่งขึ้นเองหรือไม่ (ตัวเลข เครื่องมือ หรือข้อเท็จจริงที่ไม่มีใน scenario) | | |
+| ใช้ตัวเลขจาก scenario หรือไม่ (latency, ช่วงพีก, ข้อจำกัดของ MailFast) |ไม่ใช้ |ใช้ |
+| ทางเลือกที่พิจารณา (ระบุ) |Option B: Event-driven publish/subscribe|Option 3: event-driven ด้วย RabbitMQ |
+| จัดการแต้มสะสมแบบ "ครั้งเดียวเท่านั้น" และ rate limit ของ MailFast หรือไม่ อย่างไร |ให้ points แบบ idempotent โดยการใช้ order id เป็น key เพื่อไม่ให้เกิด OrderPlaced เดิมซ้ำ และจัดการ rate limit ด้วย retry with backoff และ dead-letter queue พร้อม alert|ใช้ idempotent consumer บันทึก order_id ที่ประมวลผลแล้วใน transaction เดียวกับการเพิ่มแต้ม ทำให้ at-least-once delivery กลายเป็นผลแบบ exactly once แต้มซ้ำจาก at-least-once delivery จะถูก dedup ด้วย order_id และ จัดการ rate limit ไม่เกิน 50 emails/s ด้วยการ retry แบบ exponential backoff สำหรับ 0.5 % ที่ล้มเหลว แล้วส่งเข้า dead-letter queue เมื่อ retry ครบ|
+|มีสิ่งที่แต่งขึ้นเองหรือไม่ (ตัวเลข เครื่องมือ หรือข้อเท็จจริงที่ไม่มีใน scenario) |1. จาก Open Question ไม่ทราบว่าทีมมีประสบการณ์การใช้งาน RabbitMQ 2. ไม่รู้ latency ของระบบ| -|
 
 ## รับผิดชอบ ADR ฉบับสุดท้ายของตัวเอง
 
@@ -51,6 +51,4 @@ language: Thai
 
 | # | สิ่งที่เปลี่ยนจากร่างของ AI | เหตุผล |
 |---|---|---|
-| 1 | | |
-| 2 | | |
-| 3 | | |
+

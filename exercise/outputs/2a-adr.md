@@ -1,109 +1,97 @@
-> Agent: Claude Code (VS Code extension) · Model: Claude Opus 5.5 (`claude-opus-5-5`) · Run: a (zero-shot, context: none)
+> Agent: Claude Code (Anthropic) · Model: Claude Opus 5.5 (`claude-opus-5-5`) · Run: a (zero-shot, context: none)
 
-# ADR-0002: Publish an "OrderPlaced" event to a message broker for post-order actions
+# ADR-0002: Publish an "OrderPlaced" event for post-order actions
 
 - **Status:** Proposed
-- **Date:** 2026-10-25
-- **Deciders:** Not evidenced in the provided files (ดู Open questions)
+- **Date:** 2026-10-31
+- **Deciders:** ยังไม่ระบุ (ดู Open questions)
 
 ## Context and problem
 
-หลังจากลูกค้าสั่งซื้อสำเร็จ Online Boutique ต้องทำงานต่อจากการสั่งซื้อ (post-order actions) เพิ่มขึ้น ตาม requirement:
+หลังจากลูกค้าสั่งซื้อสำเร็จ Online Boutique ต้องทำงานต่อเนื่อง (post-order actions) 3 อย่าง ตาม requirement:
 
-| # | Post-order action | ผู้รับผิดชอบ / ระบบ | หมายเหตุ |
+| # | งาน | ผู้รับผิดชอบ | สถานะ |
 |---|---|---|---|
-| 1 | ส่งอีเมลยืนยันคำสั่งซื้อ | MailFast (external email provider ใหม่) | มาแทน logic แบบ mock ใน `emailservice` |
-| 2 | ให้คะแนนสะสม (loyalty points) | `loyaltyservice` (ต้องสร้างใหม่) | |
-| 3 | บันทึก analytics event "order placed" | ทีม marketing | |
-| 4+ | SMS, fraud scoring, การอัปเดต recommendations | ยังไม่ระบุ | marketing คาดว่าจะเพิ่มในปีหน้า |
+| 1 | ส่งอีเมลยืนยันคำสั่งซื้อผ่าน **MailFast** (external email provider) แทน logic จำลองใน `emailservice` | MailFast (ภายนอก) | ใหม่ |
+| 2 | ให้ **loyalty points** | `loyaltyservice` | ต้องสร้างใหม่ |
+| 3 | บันทึก analytics event **"order placed"** ให้ทีม marketing | ยังไม่ระบุระบบปลายทาง | ใหม่ |
 
-ปัญหาที่ต้องตัดสินใจ: **จะเชื่อมขั้นตอนสั่งซื้อ (order placement) เข้ากับ post-order actions เหล่านี้อย่างไร** เพื่อให้
-- การสั่งซื้อไม่ช้าลงหรือล้มเหลวเพราะ MailFast (ระบบภายนอก) หรือ `loyaltyservice` (ระบบใหม่) มีปัญหา
-- เพิ่ม action ใหม่ในปีหน้าได้โดยไม่ต้องแก้ service ที่ทำการสั่งซื้อทุกครั้ง
+นอกจากนี้ marketing คาดว่า **ปีหน้าจะมี post-order actions เพิ่ม** (SMS, fraud scoring, recommendations update)
 
-ข้อจำกัดของ ADR นี้: เขียนจาก requirement เพียงอย่างเดียว (`context: none`) จึงไม่มีหลักฐานจากโค้ดว่าปัจจุบัน service ใดเป็นผู้ทำการสั่งซื้อ หรือเรียก `emailservice` ด้วยวิธีใด **[Assumption]** ในเอกสารนี้เรียกผู้ทำการสั่งซื้อว่า "order-placing service" (มักเป็น `checkoutservice` ใน Online Boutique แต่ Not evidenced in the provided files) และไม่มีตัวเลข เช่น ปริมาณคำสั่งซื้อ, latency target หรือ SLA ของ MailFast (ดู Open questions)
+ปัญหาที่ต้องตัดสินใจ: **service ที่ place order ควรแจ้ง/สั่งงาน post-order actions เหล่านี้อย่างไร** เพื่อให้เพิ่มงานใหม่ได้ง่าย และไม่ให้ความล้มเหลวของระบบภายนอก (เช่น MailFast) กระทบการสั่งซื้อ
+
+ข้อจำกัด: run นี้เขียนจาก requirement อย่างเดียว ไม่ได้อ่านโค้ดหรือเอกสารของระบบ ดังนั้นรายละเอียดของ service ที่ place order ในปัจจุบัน วิธีสื่อสารระหว่าง service และตัวเลขด้าน load/latency คือ **Not evidenced in the provided files**
 
 ## Decision drivers
 
-เรียงจากสำคัญที่สุด:
-
-1. **Availability ของการสั่งซื้อ** — การสั่งซื้อต้องสำเร็จได้แม้ MailFast, `loyaltyservice` หรือ analytics ล่มหรือช้า
-2. **Modifiability / extensibility** — เพิ่ม post-order action ใหม่ (SMS, fraud scoring, recommendations) ได้โดยแก้ order-placing service น้อยที่สุด
-3. **Performance (latency ของการสั่งซื้อ)** — ไม่เพิ่ม latency ที่ลูกค้ารู้สึกได้ตามจำนวน action
-4. **Reliability ของ action** — ต้องไม่ทำอีเมลหรือคะแนนสะสมหาย และไม่ให้คะแนนซ้ำ
-5. **Operability และ cost** — จำนวน infrastructure ใหม่ที่ต้องดูแล
-6. **Integrability กับระบบภายนอก** — แยก dependency กับ MailFast ไว้ที่จุดเดียว เพื่อเปลี่ยน provider ได้ในอนาคต
+1. **Modifiability / extensibility:** เพิ่ม post-order action ใหม่ (SMS, fraud scoring, recommendations) ได้โดยแก้ service ที่ place order ให้น้อยที่สุด (มาจาก requirement โดยตรง)
+2. **Availability ของการสั่งซื้อ:** การสั่งซื้อไม่ควรล้มเหลวหรือช้าลงเพราะ MailFast, `loyaltyservice` หรือ analytics ล่ม **[Assumption]** ว่างานทั้งสามไม่จำเป็นต้องเสร็จก่อนตอบลูกค้า
+3. **Reliability:** event ต้องไม่หาย ลูกค้าต้องได้อีเมลและ points ครบ และ points ต้องไม่ถูกให้ซ้ำ
+4. **Performance (latency ของการสั่งซื้อ):** ไม่เพิ่ม latency จากการเรียกระบบภายนอก (ยังไม่มีตัวเลข target ดู Open questions)
+5. **Operability / cost:** จำนวน infrastructure ใหม่ที่ทีมต้องดูแล
 
 ## Considered options
 
-1. **Option A — Synchronous orchestration:** order-placing service เรียก MailFast adapter, `loyaltyservice` และ analytics ทีละตัวโดยตรง (เช่น gRPC/HTTPS) ภายใน request การสั่งซื้อ
-2. **Option B — Event-driven publish/subscribe:** order-placing service publish event `OrderPlaced` ไปยัง message broker หนึ่งครั้ง แต่ละ action เป็น consumer อิสระ (`emailservice` ที่เรียก MailFast, `loyaltyservice`, analytics consumer)
-3. **Option C — Dedicated post-order orchestrator / workflow service:** order-placing service ส่งคำสั่งแบบ asynchronous ไปให้ service ใหม่ตัวเดียว (เช่น `postorderservice`) ซึ่งเรียก action แต่ละตัวตามลำดับ พร้อม retry
+1. **A: Synchronous orchestration:** service ที่ place order เรียก MailFast (ผ่าน `emailservice`), `loyaltyservice` และ analytics ตามลำดับ ภายใน request เดียวกัน
+2. **B: Event-driven publish/subscribe:** service ที่ place order publish event `OrderPlaced` ไปยัง message broker หนึ่งครั้ง แล้ว consumer แต่ละตัว (`emailservice` → MailFast, `loyaltyservice`, analytics) subscribe แยกกันเอง
+3. **C: Workflow orchestrator:** service ที่ place order เริ่ม workflow "post-order" ใน workflow engine ซึ่งเรียกแต่ละขั้นตอนแบบ async พร้อม retry และเก็บสถานะ
 
 ### Pros and cons of the options
 
 | Option | Pros | Cons |
 |---|---|---|
-| A — Synchronous orchestration | • ง่ายที่สุด ไม่มี infrastructure ใหม่<br>• debug ง่าย เห็น flow ทั้งหมดในที่เดียว<br>• รู้ผลทันทีว่า action สำเร็จหรือไม่ | • การสั่งซื้อล้มหรือช้าเมื่อ MailFast / `loyaltyservice` มีปัญหา (availability ลดลงเป็นผลคูณของทุก dependency)<br>• latency เพิ่มตามจำนวน action<br>• ทุก action ใหม่ในปีหน้าต้องแก้และ deploy order-placing service ใหม่ (coupling สูง)<br>• ต้องเขียน timeout/retry/partial failure เองในทุก call |
-| B — Event-driven pub/sub | • order-placing service ไม่ต้องรู้จัก consumer — เพิ่ม SMS / fraud scoring / recommendations ได้โดยเพิ่ม subscriber<br>• MailFast หรือ `loyaltyservice` ล่มไม่กระทบการสั่งซื้อ; event รอใน queue แล้ว retry ได้<br>• latency ของการสั่งซื้อคงที่ (publish ครั้งเดียว)<br>• แต่ละ consumer scale และ deploy อิสระ | • ต้องติดตั้งและดูแล message broker ใหม่ (operability, cost)<br>• eventual consistency: อีเมล/คะแนนมาถึงช้ากว่าการสั่งซื้อเล็กน้อย<br>• delivery แบบ at-least-once → consumer ต้อง idempotent (กันให้คะแนนซ้ำ/อีเมลซ้ำ)<br>• ความเสี่ยง "dual write": คำสั่งซื้อสำเร็จแต่ publish event ไม่สำเร็จ<br>• tracing ข้าม service ยากขึ้น ต้องมี correlation ID |
-| C — Post-order orchestrator | • การสั่งซื้อไม่ผูกกับแต่ละ action โดยตรง<br>• logic ลำดับขั้น, retry, compensation อยู่ที่เดียว เห็นสถานะของแต่ละ order ชัด<br>• เหมาะถ้า action ในอนาคต (เช่น fraud scoring) ต้องทำตามลำดับหรือมีเงื่อนไข | • orchestrator เป็น single point of failure และคอขวดใหม่<br>• ทุก action ใหม่ยังต้องแก้ orchestrator (coupling ย้ายที่ ไม่ได้หายไป)<br>• ยังต้องมีช่องทาง asynchronous ระหว่าง order-placing service กับ orchestrator อยู่ดี จึงมีความซับซ้อนของ B บางส่วนด้วย<br>• ต้องสร้างและดูแล service เพิ่มอีกตัว |
+| A: Synchronous orchestration | เรียบง่าย ไม่มี infrastructure ใหม่ · debug/trace ง่าย · รู้ผลทันทีว่าสำเร็จหรือไม่ | latency ของการสั่งซื้อ = ผลรวมของทุก call · MailFast ล่ม = สั่งซื้อล้มหรือต้องเขียน error handling เอง · เพิ่ม action ใหม่ = ต้องแก้และ deploy service ที่ place order ทุกครั้ง (coupling สูง) |
+| B: Event-driven pub/sub | ผู้ publish ไม่ต้องรู้จัก consumer, เพิ่ม SMS/fraud/recommendations = เพิ่ม subscriber ใหม่ · แยกความล้มเหลว: consumer ล่มไม่กระทบการสั่งซื้อ · consumer retry และ scale ได้อิสระ · analytics consume event เดียวกันได้โดยตรง | ต้องดูแล message broker ใหม่ · eventual consistency (อีเมล/points มาช้ากว่าการสั่งซื้อ) · ต้องจัดการ duplicate (idempotency) และ dead-letter · ภาพรวม flow อ่านยากขึ้น ต้องมี tracing |
+| C: Workflow orchestrator | เห็นสถานะทุกขั้นที่เดียว · retry/timeout/compensation มีให้ในตัว · เหมาะถ้า fraud scoring ต้องมาก่อนขั้นอื่น (มีลำดับ) | infrastructure หนักที่สุดและทีมต้องเรียนรู้ engine ใหม่ · workflow definition ยังรวมศูนย์ เพิ่ม action ใหม่ = แก้ workflow (coupling ปานกลาง) · overkill สำหรับงาน fire-and-forget ที่ไม่ขึ้นต่อกัน |
 
 ## Decision
 
-เลือก **Option B — Event-driven publish/subscribe**
+เลือก **Option B: Event-driven publish/subscribe**
 
-- order-placing service publish event `OrderPlaced` (เช่น order ID, user/email, รายการสินค้า, ยอดรวม, เวลา) ไปยัง message broker **หลังจาก** การสั่งซื้อสำเร็จ แล้วตอบลูกค้าทันที
-- consumer แต่ละตัว subscribe แยกกัน:
-  - `emailservice` → เปลี่ยน logic mock เป็นเรียก MailFast (MailFast adapter อยู่ใน `emailservice` เท่านั้น)
-  - `loyaltyservice` (ใหม่) → คำนวณและบันทึกคะแนนสะสม
-  - analytics consumer → บันทึก event "order placed" ให้ทีม marketing
-- ใช้ **transactional outbox** หรือกลไกเทียบเท่าใน order-placing service เพื่อแก้ปัญหา dual write **[Inferred]** — จำเป็นหรือไม่ขึ้นกับว่า order ถูกเก็บถาวรหรือเปล่า ซึ่ง Not evidenced in the provided files
-- consumer ทุกตัวต้อง **idempotent** โดยใช้ order ID เป็น key และมี dead-letter queue สำหรับ event ที่ล้มเหลวซ้ำ ๆ
+- service ที่ place order publish event `OrderPlaced` **หนึ่งครั้ง** หลังการสั่งซื้อสำเร็จ (เช่น order id, ลูกค้า, อีเมล, รายการสินค้า, ยอดรวม) แล้วตอบลูกค้าทันทีโดยไม่รอ post-order actions
+- `emailservice` เปลี่ยนจาก mock เป็น adapter ที่ consume `OrderPlaced` แล้วเรียก MailFast
+- `loyaltyservice` (ใหม่) consume `OrderPlaced` แล้วให้ points แบบ idempotent (ใช้ order id เป็น key)
+- analytics consumer consume `OrderPlaced` แล้วบันทึก event "order placed" ให้ marketing
+- action ในอนาคต (SMS, fraud scoring, recommendations) = เพิ่ม subscriber ใหม่ โดยไม่แก้ผู้ publish
 
-เหตุผล: B ตอบ driver 1–3 (availability, modifiability, latency) ได้ดีที่สุด ซึ่งเป็น driver ที่ requirement ชี้ชัด — มี external dependency ใหม่ (MailFast), service ใหม่ที่ยังไม่ mature (`loyaltyservice`), และ action เพิ่มอีกอย่างน้อย 3 ตัวในปีหน้า A ทำให้ทุก action ใหม่เพิ่มทั้ง latency และจุดล้มเหลวให้การสั่งซื้อ ส่วน C ย้าย coupling ไปที่ orchestrator แต่ไม่ได้กำจัดมัน B แลกด้วยต้นทุน operability ของ broker และ eventual consistency ซึ่งยอมรับได้สำหรับอีเมล, คะแนนสะสม และ analytics **[Inferred]** — ต้องยืนยันกับ stakeholder (ดู Open questions)
+เหตุผล: driver อันดับ 1 (modifiability) และ 2 (availability) เป็นสิ่งที่ B ตอบได้ดีที่สุด เพราะผู้ publish ไม่ผูกกับ consumer และความล้มเหลวของ MailFast ถูกแยกออกจากการสั่งซื้อ ส่วน A ไม่ตอบทั้งสองข้อ และ C ให้การควบคุมที่ยังไม่จำเป็นสำหรับงานที่ไม่ขึ้นต่อกัน แลกกับความซับซ้อนที่สูงกว่า
 
-ถ้าในอนาคต fraud scoring ต้อง **บล็อก** การสั่งซื้อ (ต้องตรวจก่อนยืนยัน order) สิ่งนั้นไม่ใช่ post-order action และควรเป็น synchronous call แยกต่างหาก พร้อม ADR ใหม่
+ยังไม่เลือกเทคโนโลยี broker (เช่น RabbitMQ, Kafka, Google Cloud Pub/Sub) เพราะขึ้นกับข้อมูลที่ยังไม่มี (ดู Open questions)
 
 ## Consequences
 
-- **Positive:** การสั่งซื้อสำเร็จได้แม้ MailFast, `loyaltyservice` หรือ analytics ล่ม; event ค้างใน broker แล้วประมวลผลภายหลัง (quality attribute: availability)
-- **Positive:** เพิ่ม SMS, fraud scoring (แบบไม่บล็อก) และ recommendations update ได้โดยเพิ่ม subscriber ใหม่ ไม่ต้องแก้ order-placing service (quality attribute: modifiability / extensibility)
-- **Positive:** latency ของการสั่งซื้อไม่เพิ่มตามจำนวน post-order action (quality attribute: performance)
-- **Positive:** dependency กับ MailFast อยู่ใน `emailservice` ที่เดียว; เปลี่ยน provider ได้โดยไม่กระทบ service อื่น (quality attribute: modifiability, integrability)
-- **Positive:** consumer แต่ละตัว scale ได้อิสระ เช่น analytics ที่มี volume สูง (quality attribute: scalability)
-- **Negative:** ต้องติดตั้ง, monitor และดูแล message broker เพิ่ม (quality attribute: operability, cost)
-- **Negative:** อีเมลยืนยันและคะแนนสะสมเป็น eventual consistency — ลูกค้าอาจเห็นคะแนนช้ากว่าการสั่งซื้อ (quality attribute: consistency / usability)
-- **Negative:** debug flow ข้าม service ยากขึ้น ต้องมี distributed tracing / correlation ID (quality attribute: testability, observability)
-- **Negative:** schema ของ `OrderPlaced` กลายเป็น contract ร่วมของหลายทีม; การเปลี่ยน schema ต้อง backward compatible (quality attribute: modifiability)
+- **Positive:** เพิ่ม post-order action ใหม่ได้ด้วยการเพิ่ม subscriber โดยไม่แก้หรือ deploy service ที่ place order (quality attribute: modifiability)
+- **Positive:** MailFast, `loyaltyservice` หรือ analytics ล่มแล้วการสั่งซื้อยังทำงานได้ งานค้างจะถูกประมวลผลเมื่อกลับมา (quality attribute: availability)
+- **Positive:** latency ของการสั่งซื้อไม่ขึ้นกับระบบภายนอก เหลือแค่เวลา publish event (quality attribute: performance)
+- **Positive:** consumer แต่ละตัว scale และ deploy ได้อิสระ (quality attribute: scalability, deployability)
+- **Negative:** อีเมลยืนยันและ points มาถึงช้ากว่าการสั่งซื้อ (eventual consistency) (quality attribute: consistency / usability)
+- **Negative:** มี message broker เพิ่ม ต้อง deploy, monitor และดูแล (quality attribute: cost, operability)
+- **Negative:** flow กระจายหลาย service ทำให้ trace และ debug ยากขึ้น (quality attribute: observability / testability)
 - **Risks and mitigations:**
-  - *Event หายระหว่าง commit order กับ publish (dual write)* → transactional outbox หรือ publish พร้อม retry และ reconciliation job
-  - *ให้คะแนนซ้ำหรือส่งอีเมลซ้ำ (at-least-once delivery)* → idempotency key = order ID ใน `loyaltyservice` และ `emailservice`; ใช้ idempotency key ของ MailFast ถ้ามี (Not evidenced in the provided files)
-  - *MailFast ล่มนาน หรือ rate limit* → retry with exponential backoff, circuit breaker, dead-letter queue และ alert
-  - *Broker ล่ม* → ใช้ broker แบบ replicated/managed; outbox ทำให้ event รอใน order-placing service จนกว่า broker กลับมา
-  - *ข้อมูลส่วนบุคคล (อีเมลลูกค้า) อยู่ใน event ที่ทีม marketing ใช้* → ส่งเฉพาะ field ที่จำเป็นให้ analytics หรือแยก topic; ตรวจกับนโยบาย privacy (ดู Open questions)
-  - *Schema drift* → version field ใน event และ schema registry หรือ protobuf contract ร่วม
+  - *Event หายถ้า publish ล้มเหลวหลังบันทึก order* → พิจารณา transactional outbox หรือ retry ฝั่ง publisher
+  - *Duplicate delivery ทำให้ให้ points ซ้ำ / ส่งอีเมลซ้ำ* → consumer ต้อง idempotent โดยใช้ order id
+  - *MailFast ล่มหรือ rate-limit* → retry with backoff และ dead-letter queue พร้อม alert
+  - *Schema ของ `OrderPlaced` เปลี่ยนแล้วทำให้ consumer พัง* → กำหนด schema versioning (backward-compatible)
+  - *ข้อมูลส่วนบุคคล (อีเมล) อยู่ใน event ที่หลาย consumer อ่านได้* → จำกัดว่า field ไหนอยู่ใน event และใครอ่านได้
 
 ## Validation
 
-- **Fault-injection test:** ปิด MailFast (หรือ mock ให้ timeout) และปิด `loyaltyservice` แล้วยืนยันว่าการสั่งซื้อยังสำเร็จ 100% และเมื่อ service กลับมา event ที่ค้างถูกประมวลผลครบ
-- **Load test:** เปรียบเทียบ latency ของการสั่งซื้อก่อนและหลังเปลี่ยน; เป้าหมายตัวเลขยังไม่กำหนด (ดู Open questions)
-- **Idempotency test:** ส่ง `OrderPlaced` ซ้ำ ID เดิมหลายครั้ง แล้วยืนยันว่าได้คะแนนครั้งเดียวและอีเมลฉบับเดียว
-- **Metrics ใน production:** consumer lag, จำนวน event ใน dead-letter queue, อัตราส่งอีเมล MailFast สำเร็จ, เวลาจากสั่งซื้อจนถึงส่งอีเมล/ให้คะแนน (end-to-end delay)
-- **Extensibility check:** เมื่อเพิ่ม action แรกในปีหน้า (เช่น SMS) ยืนยันว่าไม่ต้องแก้หรือ deploy order-placing service
-- **Review date:** ทบทวน ADR นี้ก่อนเริ่มทำ action ของปีหน้า หรือเมื่อ fraud scoring ต้องเป็นแบบบล็อกการสั่งซื้อ
+- **Load test:** วัด latency ของการสั่งซื้อก่อนและหลังเปลี่ยน ต้องไม่แย่ลง (target ยังไม่มี ดู Open questions)
+- **Failure test (chaos):** ปิด MailFast (หรือ mock), `loyaltyservice` และ analytics consumer แล้วยืนยันว่าการสั่งซื้อยังสำเร็จ และงานค้างถูกประมวลผลครบเมื่อเปิดกลับมา
+- **Metrics:** consumer lag ต่อ subscriber, จำนวน message ใน dead-letter queue, อัตราสำเร็จของการส่งอีเมลผ่าน MailFast, เวลาตั้งแต่สั่งซื้อจนอีเมลถึง
+- **Idempotency test:** ส่ง `OrderPlaced` เดิมซ้ำ แล้วยืนยันว่า points ไม่เพิ่มซ้ำ
+- **Modifiability check:** เมื่อเพิ่ม action แรกของปีหน้า (เช่น SMS) ยืนยันว่าไม่ต้องแก้ service ที่ place order
+- **Review date:** ยังไม่กำหนด (ดู Open questions)
 
 ## Open questions
 
-ข้อมูลต่อไปนี้ไม่ได้ให้มาใน requirement และไม่ได้คิดขึ้นเอง:
-
-1. service ใดเป็นผู้ทำการสั่งซื้อ และปัจจุบันเรียก `emailservice` อย่างไร (synchronous? protocol อะไร?) — Not evidenced in the provided files
-2. ปริมาณคำสั่งซื้อ (orders/second ทั้งปกติและช่วง peak) และ latency target ของการสั่งซื้อ
-3. ยอมรับ delay ได้เท่าไรสำหรับอีเมลยืนยันและคะแนนสะสม (วินาที? นาที?)
-4. SLA, rate limit, API (REST? SMTP?), รองรับ idempotency key หรือไม่, และค่าใช้จ่ายของ MailFast
-5. order ถูกบันทึกลง database ถาวรหรือไม่ (มีผลต่อการใช้ transactional outbox)
-6. มี message broker ในระบบอยู่แล้วหรือไม่ และทีมมีความชำนาญเทคโนโลยีใด (เช่น RabbitMQ, Kafka, Google Pub/Sub); งบประมาณสำหรับ infrastructure ใหม่
-7. ทีม marketing ต้องการ analytics event ไปที่ระบบใด (มี analytics platform อยู่แล้ว หรือต้องสร้าง?) และต้องการ field อะไรบ้าง
-8. กฎการคำนวณคะแนนสะสม และ `loyaltyservice` ต้องเก็บข้อมูลที่ไหน
-9. fraud scoring ในปีหน้าต้องบล็อกการสั่งซื้อหรือทำหลังการสั่งซื้อ
-10. ข้อกำหนดด้าน privacy / ข้อมูลส่วนบุคคล (เช่น PDPA) สำหรับการส่งอีเมลลูกค้าไปยัง MailFast และ analytics
-11. ใครเป็น deciders ของ ADR นี้
+- service ไหนใน Online Boutique เป็นผู้ place order และปัจจุบันเรียก `emailservice` อย่างไร (protocol, sync/async)? (Not evidenced in the provided files)
+- มี message broker ในระบบอยู่แล้วหรือไม่? ทีมมีความรู้กับ broker ตัวไหน? (ใช้เลือกเทคโนโลยี)
+- target latency และปริมาณคำสั่งซื้อ (orders/sec, peak) คือเท่าไร?
+- อีเมลยืนยันต้องถึงลูกค้าภายในกี่วินาที/นาที? delay จาก eventual consistency รับได้แค่ไหน?
+- MailFast มี API แบบไหน, rate limit, SLA, ค่าใช้จ่ายต่ออีเมล และรองรับ idempotency key หรือไม่?
+- กฎการให้ loyalty points คืออะไร (สูตร, การยกเลิก/คืนสินค้าต้องหัก points หรือไม่)?
+- analytics event ส่งไปที่ระบบไหน (ภายในหรือภายนอก) และ marketing ต้องการ field อะไร?
+- fraud scoring ในอนาคตต้อง **block** การสั่งซื้อหรือไม่? ถ้าใช่ จะไม่ใช่ post-order action แบบ async และอาจต้องใช้ Option C หรือ sync call แยก
+- ข้อกำหนดด้าน privacy (PDPA/GDPR) สำหรับข้อมูลลูกค้าใน event และการส่งให้ MailFast?
+- Deciders และ review date คือใคร/เมื่อไร?
